@@ -16,90 +16,73 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import com.affiliate.util.JwtRequestFilter;
+import com.affiliate.util.JwtRequestFilter; // Assuming this is your JWT filter's package
 
 import java.util.Arrays;
-import java.util.Collections;
+import java.util.List; // Import List
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
-	@Autowired
-	private JwtRequestFilter jwtRequestFilter;
 
-	@Bean
-	public BCryptPasswordEncoder passwordEncoder() {
-		return new BCryptPasswordEncoder();
-	}
+    @Autowired
+    private JwtRequestFilter jwtRequestFilter;
 
-	@Bean
-	public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
-		return config.getAuthenticationManager();
-	}
+    @Bean
+    public BCryptPasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 
-//	@Bean
-//	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-//		http.csrf((csrf) -> csrf.disable())
-//				.authorizeHttpRequests((requests) -> requests.requestMatchers("/api/auth/**").permitAll()
-//						.requestMatchers("/api/influencer/profile").authenticated() // Requires authentication for /api/home/**
-//					    .requestMatchers("/api/influencer/**").authenticated()
-//				        .requestMatchers("/api/auth/**").permitAll()
-//                        .requestMatchers("/api/home/**").permitAll() 
-//                        .requestMatchers("/api/influencers").permitAll()
-//                        .requestMatchers("/api/products").permitAll()
-//                        .requestMatchers("/api/users/follow/**").authenticated()
-//                        .requestMatchers("/api/users/unfollow/**").authenticated()
-//                        .requestMatchers("/uploads/**").permitAll()// Secure this endpoint
-//						.anyRequest().authenticated())
-//				.sessionManagement((session) -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // No
-//																												// session
-//																												// needed
-//																												// for
-//																												// JWT
-//				.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class) // Add your JWT filter
-//				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
-//				.logout((logout) -> logout.permitAll());
-//
-//		return http.build();
-//	}
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
 
-	@Bean
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        // 🎯 Specify your Vercel frontend URL and localhost for development
+        configuration.setAllowedOrigins(List.of(
+                "https://influen-shop-backend-g5ge.vercel.app", // Your Vercel frontend
+                "http://localhost:3000"  // For local React development (if using port 3000)
+        ));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Cache-Control", "Content-Type", "X-Requested-With", "Origin", "Accept")); // Added Origin and Accept
+        configuration.setExposedHeaders(Arrays.asList("Authorization")); // If you send custom headers back
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L); // 1 hour
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration); // Apply this configuration to all paths
+        return source;
+    }
+
+    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+            .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Apply CORS configuration first
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // Crucially allow all OPTIONS requests (preflight)
                 .requestMatchers(HttpMethod.GET, "/api/influencer").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/products").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/products/{id}").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/users/{id}").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/influencer/{id}").permitAll()
-                .requestMatchers("/api/users/me").authenticated() 
-				.requestMatchers("/api/influencer/profile").authenticated() 
-			    .requestMatchers("/api/influencer/**").authenticated()
-		        .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/home/**").permitAll() 
-                .requestMatchers("/api/users/follow/**").permitAll()
-                .requestMatchers("/api/users/unfollow/**").permitAll()
+                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/home/**").permitAll()
                 .requestMatchers("/uploads/**").permitAll()
-                .anyRequest().permitAll() // All other requests require authentication
+                // Keep other permitAll for public GETs as needed
+                .requestMatchers("/api/users/me").authenticated()
+                .requestMatchers("/api/influencer/profile").authenticated()
+                .requestMatchers("/api/influencer/**").authenticated() // Might overlap with public GET if not specific
+                .requestMatchers("/api/users/follow/**").authenticated() // Changed back to authenticated as per original
+                .requestMatchers("/api/users/unfollow/**").authenticated() // Changed back to authenticated
+                .anyRequest().authenticated() // Secure all other requests by default
             )
             .sessionManagement(management -> management.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class)
-		.cors(cors -> cors.configurationSource(corsConfigurationSource()))
-		.logout((logout) -> logout.permitAll());
+            .logout(logout -> logout.permitAll());
         return http.build();
     }
-
-	@Bean
-	public CorsConfigurationSource corsConfigurationSource() {
-		CorsConfiguration configuration = new CorsConfiguration();
-		configuration.setAllowedOrigins(Arrays.asList("*")); // Allow requests from this origin
-		configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS")); // Allowed HTTP
-																									// methods
-		configuration.setAllowedHeaders(Collections.singletonList("*")); // Allow all headers
-		configuration.setAllowCredentials(true); // Allow sending credentials (like cookies)
-		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-		source.registerCorsConfiguration("/**", configuration); // Apply this configuration to all paths
-		return source;
-	}
 }
