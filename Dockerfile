@@ -1,45 +1,47 @@
-# --- Stage 1: Build the application using Maven (or Gradle) ---
-# Use a base image with JDK and Maven/Gradle build tools
-# Make sure the Java version (e.g., 17) matches your project's requirement
+# --- Stage 1: Build the application using Maven ---
+# Use a base image with JDK. eclipse-temurin is a good choice.
+# Make sure the Java version (e.g., 17) matches your project's requirement (Spring Boot 3.x needs Java 17+).
 FROM eclipse-temurin:17-jdk AS builder
 
-# Set the working directory
+# Set the working directory inside the builder stage
 WORKDIR /workspace/app
 
-# Copy Maven wrapper files (if you use ./mvnw)
+# Copy the Maven wrapper scripts and configuration
+# These files should be in the root of your project and committed to Git
 COPY mvnw .
 COPY .mvn .mvn
 
-# Copy the pom.xml to download dependencies first (layer caching)
-COPY pom.xml .
-RUN ./mvnw dependency:go-offline -B
-# For Gradle, you would copy build.gradle, settings.gradle, gradlew, gradle/
-# COPY build.gradle settings.gradle gradlew ./
-# COPY gradle ./gradle
-# RUN ./gradlew build --no-daemon or dependencies
+# Make the Maven wrapper script executable
+# This is the fix for the "Permission denied" error
+RUN chmod +x ./mvnw
 
-# Copy the source code
+# Copy the pom.xml to download dependencies first (leverages Docker layer caching)
+COPY pom.xml .
+# Download all project dependencies
+RUN ./mvnw dependency:go-offline -B
+
+# Copy your application's source code
 COPY src src
 
-# Build the application, creating the executable JAR. Skip tests for faster builds.
+# Build the application, creating the executable JAR.
+# -DskipTests skips running tests during this Docker build to make it faster.
 RUN ./mvnw package -DskipTests
-# For Gradle: RUN ./gradlew build -x test --no-daemon
 
 
 # --- Stage 2: Create the final, smaller runtime image ---
-# Use a JRE (Java Runtime Environment) base image, which is smaller than a JDK image
+# Use a JRE (Java Runtime Environment) base image, which is smaller than a JDK image.
+# Alpine Linux based images are very small, which is good for production.
 FROM eclipse-temurin:17-jre-alpine
 
-# Set the working directory
+# Set the working directory inside the final image
 WORKDIR /app
 
-# Copy the executable JAR from the builder stage
-# Adjust the path if your JAR is named differently or in a different subfolder of target/build
+# Copy only the executable JAR from the builder stage to the final image
+# Ensure 'target/*.jar' matches the location and naming pattern of your built JAR file by Maven.
 COPY --from=builder /workspace/app/target/*.jar app.jar
-# For Gradle, it might be: COPY --from=builder /workspace/app/build/libs/*.jar app.jar
 
 # Expose the port your Spring Boot application listens on (usually 8080)
 EXPOSE 8080
 
 # Define the command to run your application when the container starts
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java","-jar","/app/app.jar"]
